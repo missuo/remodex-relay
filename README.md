@@ -24,33 +24,21 @@ REMODEX_RELAY="wss://relay.owo.nz/relay" remodex up
 
 ## Self-Hosting
 
-### Docker (Recommended)
+### Docker Compose (Recommended)
+
+```bash
+mkdir remodex-relay && cd remodex-relay
+wget https://raw.githubusercontent.com/missuo/remodex-relay/main/compose.yaml
+docker compose up -d
+```
+
+### Docker Run
 
 ```bash
 docker run -d \
   --name remodex-relay \
   -p 127.0.0.1:9000:9000 \
   ghcr.io/missuo/remodex-relay:latest
-```
-
-Or with Docker Compose:
-
-```yaml
-services:
-  relay:
-    image: ghcr.io/missuo/remodex-relay:latest
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:9000:9000"
-    volumes:
-      - relay-data:/data
-    environment:
-      PORT: 9000
-      REMODEX_ENABLE_PUSH_SERVICE: false
-      REMODEX_TRUST_PROXY: false
-
-volumes:
-  relay-data:
 ```
 
 ### Build from Source
