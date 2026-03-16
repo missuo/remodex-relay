@@ -12,7 +12,7 @@ A public relay server is available for immediate use:
 wss://relay.owo.nz
 ```
 
-The server is located in Japan with optimized network routing for China mainland carriers (China Mobile, China Unicom, China Telecom) - typically under 30ms latency.
+The server is located in Japan with direct peering (no detours) for all three major China mainland carriers (China Mobile, China Unicom, China Telecom) on both inbound and outbound routes. Latency from the Yangtze River Delta region (Shanghai, Jiangsu, Zhejiang) is typically around 30ms.
 
 To use it, set the relay URL before starting Remodex:
 
