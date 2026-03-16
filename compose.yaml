@@ -1,8 +1,6 @@
 services:
   relay:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/missuo/remodex-relay:latest
     restart: unless-stopped
     environment:
       PORT: ${PORT:-9000}
