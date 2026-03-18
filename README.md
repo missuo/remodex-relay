@@ -4,6 +4,8 @@ A high-performance WebSocket relay for [Remodex](https://github.com/Emanuele-web
 
 The original Remodex project provides a Node.js relay implementation. This project rewrites the relay in Rust for better performance and lower resource usage, with full Docker support.
 
+Based on upstream commit [`e5c4be6`](https://github.com/Emanuele-web04/remodex/commit/e5c4be6) (2026-03-18).
+
 ## Public Relay
 
 A public relay server is available for immediate use:

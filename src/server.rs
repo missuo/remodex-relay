@@ -4,7 +4,10 @@ use crate::push_service::{
     disabled_push_stats, resolve_push_state_file_path,
 };
 use crate::rate_limiter::FixedWindowRateLimiter;
-use crate::relay::{self, RelayState, Role, handle_ws_connection};
+use crate::relay::{
+    self, MacRegistrationHeaders, RelayState, Role, TrustedSessionResolveRequest,
+    handle_ws_connection, resolve_trusted_mac_session,
+};
 use axum::body::Body;
 use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{ConnectInfo, Path, State};
@@ -60,6 +63,7 @@ pub fn create_app(
     });
 
     let app = Router::new()
+        .route("/", get(root_handler))
         .route("/health", get(health_handler))
         .route(
             "/v1/push/session/register-device",
@@ -69,11 +73,25 @@ pub fn create_app(
             "/v1/push/session/notify-completion",
             post(notify_completion_handler),
         )
+        .route(
+            "/v1/trusted/session/resolve",
+            post(trusted_session_resolve_handler),
+        )
         .route("/relay/{session_id}", get(ws_upgrade_handler))
         .fallback(fallback_handler)
         .with_state(app_state.clone());
 
     (app, app_state)
+}
+
+async fn root_handler() -> impl IntoResponse {
+    json_response(
+        StatusCode::OK,
+        json!({
+            "ok": true,
+            "version": env!("CARGO_PKG_VERSION"),
+        }),
+    )
 }
 
 async fn health_handler(
@@ -198,6 +216,39 @@ async fn notify_completion_handler(
     }
 }
 
+async fn trusted_session_resolve_handler(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    body: axum::body::Bytes,
+) -> impl IntoResponse {
+    let client_key = client_address_key_from_headers(&headers, addr, state.trust_proxy);
+
+    {
+        let mut limiter = state.http_rate_limiter.lock().await;
+        if !limiter.allow(&client_key) {
+            return rate_limit_response();
+        }
+    }
+
+    let req: TrustedSessionResolveRequest = match parse_json_body(&body) {
+        Ok(b) => b,
+        Err(resp) => return resp,
+    };
+
+    match resolve_trusted_mac_session(&state.relay_state, req).await {
+        Ok(result) => json_response(StatusCode::OK, serde_json::to_value(result).unwrap()),
+        Err(e) => json_response(
+            StatusCode::from_u16(e.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            json!({
+                "ok": false,
+                "error": e.message,
+                "code": e.code,
+            }),
+        ),
+    }
+}
+
 async fn ws_upgrade_handler(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
@@ -234,12 +285,35 @@ async fn ws_upgrade_handler(
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
 
+    let mac_reg_headers = MacRegistrationHeaders {
+        mac_device_id: headers
+            .get("x-mac-device-id")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string()),
+        mac_identity_public_key: headers
+            .get("x-mac-identity-public-key")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string()),
+        machine_name: headers
+            .get("x-machine-name")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string()),
+        trusted_phone_device_id: headers
+            .get("x-trusted-phone-device-id")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string()),
+        trusted_phone_public_key: headers
+            .get("x-trusted-phone-public-key")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string()),
+    };
+
     let relay_state = state.relay_state.clone();
 
     // Role validation happens AFTER upgrade (inside the WS handler) to match the JS
     // behavior which accepts the upgrade first and then closes with code 4000.
     ws.on_upgrade(move |socket| async move {
-        handle_ws_connection(relay_state, session_id, Role::from_str(&role_str), notification_secret, socket).await;
+        handle_ws_connection(relay_state, session_id, Role::from_str(&role_str), notification_secret, Some(mac_reg_headers), socket).await;
     })
 }
 
